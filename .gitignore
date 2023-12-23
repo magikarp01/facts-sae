@@ -1,3 +1,5 @@
 baulab.us/
 jupyter_logs/
 *.pyc
+slurm_outputs/
+wandb/
