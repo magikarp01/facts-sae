@@ -1,63 +1,81 @@
-
 from nnsight import LanguageModel
 from dictionary_learning.buffer import ActivationBuffer
 from dictionary_learning.training import trainSAE
 from transformer_lens import HookedTransformer, utils
 import torch
 import os
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
 from tqdm import tqdm
 from tqdm.notebook import tqdm as tqdm_notebook
-from test_sae import get_metrics
 import wandb
+from test_sae import get_metrics
+import psutil
+from tqdm import tqdm
+# from tqdm.notebook import tqdm as tqdm_notebook
 
-model = LanguageModel(
-    'EleutherAI/pythia-70m-deduped', # this can be any Huggingface model
-    device_map = 'cuda:0'
-)
-submodule = model.gpt_neox.layers[1].mlp # layer 1 MLP
-activation_dim = 512 # output dimension of the MLP
-dictionary_size = 16 * activation_dim
+
+#%%
+
+size = "70m"
+device='cuda:0'
 tl_model = HookedTransformer.from_pretrained(
-    'EleutherAI/pythia-70m-deduped',
+    f'EleutherAI/pythia-{size}-deduped',
     # 'EleutherAI/pythia-1.4b-deduped',
     # 'EleutherAI/pythia-2.8b-deduped',
-    device = 'cuda:0'
+    device = device
 )
-
-# model.set_use_hook_mlp_in(True)
 tokenizer = tl_model.tokenizer
 
-device='cuda:0'
+layer = 1
+hook_pos = utils.get_act_name("mlp_out", layer)
+# model.set_use_hook_mlp_in(True)
+
+# model = LanguageModel(
+#     f'EleutherAI/pythia-{size}-deduped', # this can be any Huggingface model
+#     # 'EleutherAI/pythia-2.8b-deduped',
+#     device_map = device
+# )
+n_gpus = torch.cuda.device_count()
+assert n_gpus > 0
+models = [
+    LanguageModel(
+        f'EleutherAI/pythia-{size}-deduped', # this can be any Huggingface model
+        # 'EleutherAI/pythia-2.8b-deduped',
+        device_map = f"cuda:{i}"
+    )
+    for i in range(n_gpus)
+]
+model = models[0]
+submodule = model.gpt_neox.layers[layer].mlp # layer 1 MLP
+submodule_fn = lambda model: model.gpt_neox.layers[layer].mlp
+activation_dim = tl_model.cfg.d_model # output dimension of the MLP
+dictionary_size = 16 * activation_dim
+
+#%%
 
 from tasks.ioi.IOITask import IOITask
 from tasks.facts.SportsTask import SportsTask
 from tasks.owt.OWTTask import OWTTask
-BATCH_SIZE=128
+BATCH_SIZE=512
 
 ioi_task = IOITask(batch_size=BATCH_SIZE, tokenizer=tokenizer, device='cuda')
 sports_task = SportsTask(batch_size=BATCH_SIZE, tokenizer=tokenizer, device='cuda')
 owt_task = OWTTask(batch_size=BATCH_SIZE, tokenizer=tokenizer, device='cuda')
 wandb.init(project='facts-sae', 
            entity='philliphguo',
-           config={
-                'training_steps': 1e7
-           }
+          #  config={
+          #       'training_steps': 1e7
+          #  }
            )
 
-# data much be an iterator that outputs strings
-# data = iter([
-#     'This is some example data',
-#     'In real life, for training a dictionary',
-#     'you would need much more data than this'
-# ])
-
+#%%
 from datasets import load_dataset
 import torch
 from collections import defaultdict
 
 # Load the dataset
 # train_dataset = load_dataset('wikitext', 'wikitext-103-v1', split='train[:1000000]')
-train_dataset = load_dataset('Skylion007/openwebtext', split='train[:100]')
+train_dataset = load_dataset('Skylion007/openwebtext', split=f'train[:{int(5e6)}]')
 def yield_sentences(data_split):
     for example in data_split:
         text = example['text']
@@ -77,11 +95,13 @@ buffer = ActivationBuffer(
     model,
     submodule,
     out_feats=activation_dim, # output dimension of the model component
-    n_ctxs=3e3,
-    in_batch_size=128, # batch size for the model
-    out_batch_size=128*16, # batch size for the buffer
+    n_ctxs=1e4,
+    in_batch_size=int(512*16), # batch size for the model
+    out_batch_size=512*16, # batch size for the buffer
+    # num_gpus=2, # number of GPUs to use
+    models=models,
+    submodule_fn=submodule_fn,
 ) # buffer will return batches of tensors of dimension = submodule's output dimension
-
 
 from dictionary_learning.dictionary import AutoEncoder
 from dictionary_learning.buffer import ActivationBuffer
@@ -123,7 +143,7 @@ def trainSAE(
     print("setup sae, optimizer, scheduler")
 
     for step, acts in enumerate(tqdm_style(activations, total=steps)):
-        print(step)
+        # print(step)
         if steps is not None and step >= steps:
             break
 
@@ -158,10 +178,16 @@ def trainSAE(
 
         # logging
         if log_steps is not None and step % log_steps == 0:
-            total = torch.cuda.get_device_properties(0).total_memory
-            r = torch.cuda.memory_reserved(0)
-            a = torch.cuda.memory_allocated(0)
-            print(f"step {step} memory: {a*1e-9} allocated, {r*1e-9} reserved, {total*1e-9} total")
+            # total = torch.cuda.get_device_properties(0).total_memory
+            # r = torch.cuda.memory_reserved(0)
+            # a = torch.cuda.memory_allocated(0)
+            # print(f"step {step} memory: {a*1e-9} allocated, {r*1e-9} reserved, {total*1e-9} total")
+            max_vram = torch.cuda.max_memory_allocated() / 1e9
+            cur_vram = torch.cuda.memory_allocated() / 1e9
+
+            process = psutil.Process()
+            cur_mem = process.memory_info().rss / 1e9
+            print(f"step {step} max vram: {max_vram}, cur mem: {cur_mem}")
             with torch.no_grad():
                 mse_loss, sparsity_loss = sae_loss(acts, ae, sparsity_penalty, entropy, separate=True)
                 print(f"step {step} MSE loss: {mse_loss}, sparsity loss: {sparsity_loss}")
@@ -173,11 +199,14 @@ def trainSAE(
                 #     print(f"step {step} reconstruction loss: {loss_orig}, {loss_reconst}, {loss_zero}")
                 if use_wandb:
                     wandb.log({'mse_loss': mse_loss, 'sparsity_loss': sparsity_loss}, step=step)
-                    wandb.log({'mem_allocated': a*1e-9, 'mem_reserved': r*1e-9, 'mem_total': total*1e-9}, step=step)
+                    # wandb.log({'mem_allocated': a*1e-9, 'mem_reserved': r*1e-9, 'mem_total': total*1e-9}, step=step)
+                    wandb.log({'max_vram': max_vram, 'cur_mem': cur_mem}, step=step)
+
         # testing
         if test_steps is not None and step % test_steps == 0:
             with torch.no_grad():
-                test_metrics = get_metrics(activations, ae, device=device, n_iter=1, ioi_task=ioi_task, sports_task=sports_task, owt_task=owt_task)
+                test_metrics = get_metrics(tl_model, ae, hook_name=hook_pos, n_iter=1, ioi_task=ioi_task, sports_task=sports_task, owt_task=owt_task)
+                print(test_metrics)
                 for k, v in test_metrics.items():
                     metrics[k].append(test_metrics[k])
                 if use_wandb:
@@ -203,15 +232,16 @@ finished_sae, test_metrics = trainSAE(
     dictionary_size,
     lr=3e-4,
     sparsity_penalty=1e-3,
-    steps=1e8,
-    warmup_steps=1000,
-    resample_steps=25000,
-    save_steps=1e5,
-    save_dir='trained_saes',
-    log_steps=1000,
-    test_steps=10000,
+    steps=int(1e5),
+    warmup_steps=5000,
+    resample_steps=30000,
+    save_steps=int(1e4), 
+    save_dir=f'trained_saes/{size}',
+    log_steps=100,
+    test_steps=100,
     device=device,
     tqdm_style=tqdm,
     use_wandb=True
 )
 wandb.finish()
+#%%

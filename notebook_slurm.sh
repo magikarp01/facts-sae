@@ -10,8 +10,8 @@
 
 # Start a tmux session in the background
 
-source ~/.bash_profile
-tmux new-session -d -s gpu_monitor 'nvidia-smi -l 1'
+# source ~/.bash_profile
+# tmux new-session -d -s gpu_monitor 'nvidia-smi -l 1'
 
 source /data/phillip_guo/miniconda3/etc/profile.d/conda.sh
 conda activate unlrn

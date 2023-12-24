@@ -3,3 +3,4 @@ jupyter_logs/
 *.pyc
 slurm_outputs/
 wandb/
+trained_saes/
