@@ -178,10 +178,10 @@ def trainSAE(
         if test_steps is not None and step % test_steps == 0:
             with torch.no_grad():
                 test_metrics = get_metrics(activations, ae, device=device, n_iter=1, ioi_task=ioi_task, sports_task=sports_task, owt_task=owt_task)
-                for k, v in metrics.items():
+                for k, v in test_metrics.items():
                     metrics[k].append(test_metrics[k])
                 if use_wandb:
-                    wandb.log(metrics, step=step)
+                    wandb.log(test_metrics, step=step)
 
         # saving
         if save_steps is not None and save_dir is not None and step % save_steps == 0:
