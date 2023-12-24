@@ -15,8 +15,9 @@ from tqdm import tqdm
 
 
 #%%
-
-size = "70m"
+print("starting to load model")
+# size = "70m"
+size = "2.8b"
 device='cuda:0'
 tl_model = HookedTransformer.from_pretrained(
     f'EleutherAI/pythia-{size}-deduped',
@@ -43,7 +44,7 @@ models = [
         # 'EleutherAI/pythia-2.8b-deduped',
         device_map = f"cuda:{i}"
     )
-    for i in range(n_gpus)
+    for i in range(1, n_gpus)
 ]
 model = models[0]
 submodule = model.gpt_neox.layers[layer].mlp # layer 1 MLP
@@ -56,7 +57,8 @@ dictionary_size = 16 * activation_dim
 from tasks.ioi.IOITask import IOITask
 from tasks.facts.SportsTask import SportsTask
 from tasks.owt.OWTTask import OWTTask
-BATCH_SIZE=512
+# BATCH_SIZE = 512 # for 70m
+BATCH_SIZE = 160 # for 2.8b
 
 ioi_task = IOITask(batch_size=BATCH_SIZE, tokenizer=tokenizer, device='cuda')
 sports_task = SportsTask(batch_size=BATCH_SIZE, tokenizer=tokenizer, device='cuda')
@@ -95,13 +97,15 @@ buffer = ActivationBuffer(
     model,
     submodule,
     out_feats=activation_dim, # output dimension of the model component
-    n_ctxs=1e4,
-    in_batch_size=int(512*16), # batch size for the model
-    out_batch_size=512*16, # batch size for the buffer
+    n_ctxs=3e3,
+    in_batch_size=int(BATCH_SIZE*2*(n_gpus-1)), # batch size for the model
+    out_batch_size=BATCH_SIZE*8, # batch size for the buffer
     # num_gpus=2, # number of GPUs to use
     models=models,
     submodule_fn=submodule_fn,
 ) # buffer will return batches of tensors of dimension = submodule's output dimension
+
+#%%
 
 from dictionary_learning.dictionary import AutoEncoder
 from dictionary_learning.buffer import ActivationBuffer
@@ -184,10 +188,11 @@ def trainSAE(
             # print(f"step {step} memory: {a*1e-9} allocated, {r*1e-9} reserved, {total*1e-9} total")
             max_vram = torch.cuda.max_memory_allocated() / 1e9
             cur_vram = torch.cuda.memory_allocated() / 1e9
+            vram_usages = {f"cuda:{i}": torch.cuda.max_memory_allocated(f"cuda:{i}") // 1e9 for i in range(t.cuda.device_count())}
 
             process = psutil.Process()
             cur_mem = process.memory_info().rss / 1e9
-            print(f"step {step} max vram: {max_vram}, cur mem: {cur_mem}")
+            print(f"step {step} max vram: {max_vram}, cur mem: {cur_mem}, vram usages: {vram_usages}")
             with torch.no_grad():
                 mse_loss, sparsity_loss = sae_loss(acts, ae, sparsity_penalty, entropy, separate=True)
                 print(f"step {step} MSE loss: {mse_loss}, sparsity loss: {sparsity_loss}")
@@ -201,6 +206,7 @@ def trainSAE(
                     wandb.log({'mse_loss': mse_loss, 'sparsity_loss': sparsity_loss}, step=step)
                     # wandb.log({'mem_allocated': a*1e-9, 'mem_reserved': r*1e-9, 'mem_total': total*1e-9}, step=step)
                     wandb.log({'max_vram': max_vram, 'cur_mem': cur_mem}, step=step)
+                    wandb.log(vram_usages, step=step)
 
         # testing
         if test_steps is not None and step % test_steps == 0:
@@ -240,7 +246,7 @@ finished_sae, test_metrics = trainSAE(
     log_steps=100,
     test_steps=100,
     device=device,
-    tqdm_style=tqdm,
+    tqdm_style=tqdm_notebook,
     use_wandb=True
 )
 wandb.finish()

@@ -5,6 +5,7 @@ import io
 from nnsight import LanguageModel
 import os, psutil
 import concurrent.futures
+import time
 
 """
 Implements a buffer of activations
@@ -40,7 +41,7 @@ class ActivationBuffer:
                     in_feats = submodule.in_features
                 except:
                     raise ValueError("in_feats cannot be inferred and must be specified directly")
-            self.activations = t.empty(0, in_feats)
+            self.activations = t.empty(0, in_feats).to(default_device)
 
         elif io == 'out':
             if out_feats is None:
@@ -48,7 +49,7 @@ class ActivationBuffer:
                     out_feats = submodule.out_features
                 except:
                     raise ValueError("out_feats cannot be inferred and must be specified directly")
-            self.activations = t.empty(0, out_feats)
+            self.activations = t.empty(0, out_feats).to(default_device)
         elif io == 'in_to_out':
             if in_feats is None:
                 try:
@@ -180,6 +181,9 @@ class ActivationBuffer:
         self.activations = self.activations[~self.read]
 
         while len(self.activations) < self.n_ctxs * self.ctx_len:
+            # print(f"buffer size: {len(self.activations)}, need {self.n_ctxs * self.ctx_len}, buffer_shape: {self.activations.shape}")
+            # vram_usages = [t.cuda.max_memory_allocated(f"cuda:{i}") // 1e9 for i in range(t.cuda.device_count())]
+            # print(f"max vram usages: {vram_usages}")
             tokens = self.tokenized_batch()['input_ids']
 
             # Split tokens for different models
@@ -190,15 +194,20 @@ class ActivationBuffer:
             with concurrent.futures.ThreadPoolExecutor() as executor:
                 # futures = [executor.submit(self.process_on_gpu, model, tokens_chunk, self.io) 
                 #            for model, tokens_chunk in zip(self.models, split_tokens)]
-                futures = [executor.submit(self.process_on_gpu, self.models[i], self.submodules[i], split_tokens[i], self.io) for i in range(len(self.models))]
-                results = [f.result().to(device=self.default_device) for f in concurrent.futures.as_completed(futures)]
+                futures = [executor.submit(self.process_on_gpu, self.models[i], self.submodules[i], split_tokens[i], self.io, "cuda:0") for i in range(len(self.models))]
+                results = [f.result() for f in concurrent.futures.as_completed(futures)]
             
+            # print("starting moving to device")
+            # starttime = time.time()
+            # results = [result.to(self.default_device) for result in results]
+            # print("finished moving to device, time elapsed: ", time.time() - starttime, " seconds")
             # Combine results
             hidden_states = t.cat(results, dim=0)
-            self.activations = t.cat([self.activations, hidden_states.to('cpu')], dim=0)
+            # self.activations = t.cat([self.activations, hidden_states.to('cpu')], dim=0)
+            self.activations = t.cat([self.activations, hidden_states], dim=0)
             self.read = t.zeros(len(self.activations)).bool()
 
-    def process_on_gpu(self, model, submodule, tokens, io):
+    def process_on_gpu(self, model, submodule, tokens, io, move_to_device=None):
         with t.no_grad():
             with model.generate(max_new_tokens=1, pad_token_id=model.tokenizer.pad_token_id) as generator:
                 with generator.invoke(tokens) as invoker:
@@ -209,7 +218,9 @@ class ActivationBuffer:
             hidden_states = hidden_states.value
             if isinstance(hidden_states, tuple):
                 hidden_states = hidden_states[0]
-            return hidden_states[tokens != model.tokenizer.pad_token_id]
+            if move_to_device is None:
+                return hidden_states[tokens != model.tokenizer.pad_token_id]
+            return hidden_states[tokens != model.tokenizer.pad_token_id].to(move_to_device)
     
     def _refresh_in_to_out(self):
         """
