@@ -181,9 +181,9 @@ class ActivationBuffer:
         self.activations = self.activations[~self.read]
 
         while len(self.activations) < self.n_ctxs * self.ctx_len:
-            # print(f"buffer size: {len(self.activations)}, need {self.n_ctxs * self.ctx_len}, buffer_shape: {self.activations.shape}")
-            # vram_usages = [t.cuda.max_memory_allocated(f"cuda:{i}") // 1e9 for i in range(t.cuda.device_count())]
-            # print(f"max vram usages: {vram_usages}")
+            print(f"buffer size: {len(self.activations)}, need {self.n_ctxs * self.ctx_len}, buffer_shape: {self.activations.shape}")
+            vram_usages = [t.cuda.max_memory_allocated(f"cuda:{i}") // 1e9 for i in range(t.cuda.device_count())]
+            print(f"max vram usages: {vram_usages}")
             tokens = self.tokenized_batch()['input_ids']
 
             # Split tokens for different models

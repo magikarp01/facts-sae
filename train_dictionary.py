@@ -97,9 +97,9 @@ buffer = ActivationBuffer(
     model,
     submodule,
     out_feats=activation_dim, # output dimension of the model component
-    n_ctxs=3e3,
+    n_ctxs=1e4,
     in_batch_size=int(BATCH_SIZE*2*(n_gpus-1)), # batch size for the model
-    out_batch_size=BATCH_SIZE*8, # batch size for the buffer
+    out_batch_size=BATCH_SIZE*8*2, # batch size for the buffer
     # num_gpus=2, # number of GPUs to use
     models=models,
     submodule_fn=submodule_fn,

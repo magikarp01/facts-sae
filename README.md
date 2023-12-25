@@ -2,6 +2,9 @@ setup:
 - git clone https://github.com/saprmarks/dictionary_learning.git (actually don't do this)
 - git clone https://github.com/magikarp01/tasks.git
 
+conda install -c anaconda ipykernel
+python -m ipykernel install --user --name=unlrn-2
+
 dictionary_learning directory is from saprmarks, but with some alterations 
 
 use same requirements as mechanistic-unlearning, along with a few more here
