@@ -11,9 +11,10 @@ fancy_einsum
 charset-normalizer==3.1.0
 detoxify
 cmapy
-git+https://github.com/magikarp01/tasks.git
 notebook
 nnsight
 transformer_lens
 pytest
 scikit-learn
+jupyter
+ipywidgets

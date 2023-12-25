@@ -12,12 +12,32 @@ from test_sae import get_metrics
 import psutil
 from tqdm import tqdm
 # from tqdm.notebook import tqdm as tqdm_notebook
+import argparse
+import os
 
+
+# Create the parser and add arguments
+parser = argparse.ArgumentParser(description='Run the model with specified layer')
+parser.add_argument('--layer', type=int, default=1, help='Specify the layer number')
+parser.add_argument('--size', type=str, default="70m", help='Specify the model size')
+parser.add_argument('--batch_size', type=int, default=1024, help='Specify the batch size')
+parser.add_argument('--steps', type=int, default=int(1e5), help='Specify the number of steps to train')
+# Parse the arguments
+args = parser.parse_args()
+
+# Use the layer value from the command line argument
+layer = args.layer
+size = args.size
+BATCH_SIZE = args.batch_size
+steps = args.steps
 
 #%%
 print("starting to load model")
 # size = "70m"
-size = "2.8b"
+# BATCH_SIZE = 1024 # for 70m
+# BATCH_SIZE = 160 # for 2.8b
+
+# size = "2.8b"
 device='cuda:0'
 tl_model = HookedTransformer.from_pretrained(
     f'EleutherAI/pythia-{size}-deduped',
@@ -27,7 +47,7 @@ tl_model = HookedTransformer.from_pretrained(
 )
 tokenizer = tl_model.tokenizer
 
-layer = 1
+# layer = 1
 hook_pos = utils.get_act_name("mlp_out", layer)
 # model.set_use_hook_mlp_in(True)
 
@@ -57,18 +77,19 @@ dictionary_size = 16 * activation_dim
 from tasks.ioi.IOITask import IOITask
 from tasks.facts.SportsTask import SportsTask
 from tasks.owt.OWTTask import OWTTask
-# BATCH_SIZE = 512 # for 70m
-BATCH_SIZE = 160 # for 2.8b
 
 ioi_task = IOITask(batch_size=BATCH_SIZE, tokenizer=tokenizer, device='cuda')
 sports_task = SportsTask(batch_size=BATCH_SIZE, tokenizer=tokenizer, device='cuda')
 owt_task = OWTTask(batch_size=BATCH_SIZE, tokenizer=tokenizer, device='cuda')
 wandb.init(project='facts-sae', 
            entity='philliphguo',
-          #  config={
-          #       'training_steps': 1e7
-          #  }
+           config={
+                'model': f'EleutherAI/pythia-{size}-deduped',
+                'batch_size': BATCH_SIZE,
+                'layer': layer,
+           }
            )
+
 
 #%%
 from datasets import load_dataset
@@ -77,7 +98,7 @@ from collections import defaultdict
 
 # Load the dataset
 # train_dataset = load_dataset('wikitext', 'wikitext-103-v1', split='train[:1000000]')
-train_dataset = load_dataset('Skylion007/openwebtext', split=f'train[:{int(5e6)}]')
+train_dataset = load_dataset('Skylion007/openwebtext', split=f'train[:{int(7e6)}]')
 def yield_sentences(data_split):
     for example in data_split:
         text = example['text']
@@ -89,8 +110,9 @@ def yield_sentences(data_split):
 # Creating an iterator for training sentences
 train_sentences = yield_sentences(train_dataset)
 
-# for i in range(10):
-#     print(next(train_sentences))
+for i in range(10):
+    print(next(train_sentences))
+    print(len(tokenizer(next(train_sentences))['input_ids']))
 
 buffer = ActivationBuffer(
     train_sentences,
@@ -188,7 +210,7 @@ def trainSAE(
             # print(f"step {step} memory: {a*1e-9} allocated, {r*1e-9} reserved, {total*1e-9} total")
             max_vram = torch.cuda.max_memory_allocated() / 1e9
             cur_vram = torch.cuda.memory_allocated() / 1e9
-            vram_usages = {f"cuda:{i}": torch.cuda.max_memory_allocated(f"cuda:{i}") // 1e9 for i in range(t.cuda.device_count())}
+            vram_usages = {f"cuda:{i}": torch.cuda.max_memory_allocated(f"cuda:{i}") // 1e9 for i in range(torch.cuda.device_count())}
 
             process = psutil.Process()
             cur_mem = process.memory_info().rss / 1e9
@@ -220,6 +242,8 @@ def trainSAE(
 
         # saving
         if save_steps is not None and save_dir is not None and step % save_steps == 0:
+            if not os.path.exists(save_dir):
+                os.mkdir(save_dir)
             if not os.path.exists(os.path.join(save_dir, "checkpoints")):
                 os.mkdir(os.path.join(save_dir, "checkpoints"))
             torch.save(
@@ -238,13 +262,13 @@ finished_sae, test_metrics = trainSAE(
     dictionary_size,
     lr=3e-4,
     sparsity_penalty=1e-3,
-    steps=int(1e5),
+    steps=steps,
     warmup_steps=5000,
     resample_steps=30000,
     save_steps=int(1e4), 
     save_dir=f'trained_saes/{size}',
-    log_steps=100,
-    test_steps=100,
+    log_steps=200,
+    test_steps=200,
     device=device,
     tqdm_style=tqdm_notebook,
     use_wandb=True
