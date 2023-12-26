@@ -33,6 +33,7 @@ class ActivationBuffer:
                  models=None, # list of models to use in parallel to store activations
                  submodule_fn=None, # function to get the submodule from the model
                  default_device='cuda:0',
+                 min_buffer=0.5, # minimum fraction of buffer to fill before refreshing
                  ):
         
         if io == 'in':
@@ -85,6 +86,11 @@ class ActivationBuffer:
             self.submodules = [submodule_fn(model) for model in models]
             
         self.default_device = default_device
+        self.min_buffer = min_buffer
+        self.cycle = cycle
+        if cycle:
+            # clone data generator
+            self.orig_data = list(data)
 
         # assert num_gpus <= t.cuda.device_count()
         # assert num_gpus == len(models)
@@ -108,7 +114,7 @@ class ActivationBuffer:
         """
         with t.no_grad():
             # if buffer is less than half full, refresh
-            if (~self.read).sum() < self.n_ctxs * self.ctx_len // 2:
+            if (~self.read).sum() < self.n_ctxs * self.ctx_len * self.min_buffer:
                 try:
                     self.refresh()
                 except EmptyStream: # if the data stream is exhausted, stop
