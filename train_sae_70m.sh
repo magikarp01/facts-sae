@@ -6,6 +6,8 @@
 #SBATCH --output=slurm_outputs/output_sae-%J.txt
 #SBATCH --error=slurm_outputs/error_sae-%J.txt
 
-source /opt/conda/etc/profile.d/conda.sh
+# source /mnt/rapid-shadow/home/Pguo/miniconda3/etc/profile.d/conda.sh
+export PATH=/mnt/rapid-shadow/home/Pguo/miniconda3/bin:$PATH
+# source /opt/conda/etc/profile.d/conda.sh
 conda activate unlrn
 python train_dictionary.py --size=70m --layer=1 --batch_size=1024 --steps=100000

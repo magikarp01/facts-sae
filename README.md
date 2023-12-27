@@ -3,7 +3,8 @@ setup:
 - git clone https://github.com/magikarp01/tasks.git
 
 conda install -c anaconda ipykernel
-python -m ipykernel install --user --name=unlrn-2
+python -m ipykernel install --user --name=unlrn
+conda install pytorch torchvision torchaudio pytorch-cuda=11.8 -c pytorch -c nvidia
 
 dictionary_learning directory is from saprmarks, but with some alterations 
 

@@ -99,27 +99,26 @@ from collections import defaultdict
 # Load the dataset
 # train_dataset = load_dataset('wikitext', 'wikitext-103-v1', split='train[:1000000]')
 train_dataset = load_dataset('Skylion007/openwebtext', split=f'train[:{int(7e6)}]')
-def yield_sentences(data_split):
-    for example in data_split:
-        text = example['text']
-        sentences = text.split('\n')
-        for sentence in sentences:
-            if sentence:  # skip empty lines
-                yield sentence
+def yield_sentences(data_split, cycle=False):
+    while True:
+        for example in data_split:
+            text = example['text']
+            sentences = text.split('\n')
+            for sentence in sentences:
+                if sentence:  # skip empty lines
+                    yield sentence
+        if not cycle:
+            break
 
 # Creating an iterator for training sentences
-train_sentences = yield_sentences(train_dataset)
-
-for i in range(10):
-    print(next(train_sentences))
-    print(len(tokenizer(next(train_sentences))['input_ids']))
+train_sentences = yield_sentences(train_dataset, cycle=True)
 
 buffer = ActivationBuffer(
     train_sentences,
     model,
     submodule,
     out_feats=activation_dim, # output dimension of the model component
-    n_ctxs=1e4,
+    n_ctxs=2e4,
     in_batch_size=int(BATCH_SIZE*2*(n_gpus-1)), # batch size for the model
     out_batch_size=BATCH_SIZE*8*2, # batch size for the buffer
     # num_gpus=2, # number of GPUs to use

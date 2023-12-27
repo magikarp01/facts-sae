@@ -32,7 +32,7 @@ class ActivationBuffer:
                  out_batch_size=8192, # size of batches in which to return activations
                  models=None, # list of models to use in parallel to store activations
                  submodule_fn=None, # function to get the submodule from the model
-                 default_device='cuda:0',
+                 default_device='cpu', # default device to use for storing activations
                  ):
         
         if io == 'in':
@@ -194,7 +194,7 @@ class ActivationBuffer:
             with concurrent.futures.ThreadPoolExecutor() as executor:
                 # futures = [executor.submit(self.process_on_gpu, model, tokens_chunk, self.io) 
                 #            for model, tokens_chunk in zip(self.models, split_tokens)]
-                futures = [executor.submit(self.process_on_gpu, self.models[i], self.submodules[i], split_tokens[i], self.io, "cuda:0") for i in range(len(self.models))]
+                futures = [executor.submit(self.process_on_gpu, self.models[i], self.submodules[i], split_tokens[i], self.io, 'cpu') for i in range(len(self.models))]
                 results = [f.result() for f in concurrent.futures.as_completed(futures)]
             
             # print("starting moving to device")

@@ -8,4 +8,4 @@
 
 source /opt/conda/etc/profile.d/conda.sh
 conda activate unlrn
-python train_dictionary.py --size=2.8b --layer=1 --batch_size=160
+python train_dictionary.py --size=2.8b --layer=1 --batch_size=160 --steps=400000
