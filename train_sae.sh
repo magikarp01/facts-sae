@@ -6,6 +6,10 @@
 #SBATCH --output=slurm_outputs/output_sae-%J.txt
 #SBATCH --error=slurm_outputs/error_sae-%J.txt
 
-source /opt/conda/etc/profile.d/conda.sh
+# source /opt/conda/etc/profile.d/conda.sh
+export PATH=/mnt/rapid-shadow/home/Pguo/miniconda3/bin:$PATH
+conda config --add envs_dirs /mnt/rapid-shadow/home/Pguo/miniconda3/envs
+export WANDB_API_KEY=e3f0e114af46b3c098870f12c408690133379f22
+conda init
 conda activate unlrn
-python train_dictionary.py --size=2.8b --layer=1 --batch_size=160 --steps=400000
+python train_dictionary.py --size=2.8b --layer=1 --batch_size=160 --steps=400000 --stream_dataset=True

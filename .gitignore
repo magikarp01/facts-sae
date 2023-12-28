@@ -4,3 +4,4 @@ jupyter_logs/
 slurm_outputs/
 wandb/
 trained_saes/
+hf_datasets/

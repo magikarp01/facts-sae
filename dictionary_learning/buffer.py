@@ -32,7 +32,8 @@ class ActivationBuffer:
                  out_batch_size=8192, # size of batches in which to return activations
                  models=None, # list of models to use in parallel to store activations
                  submodule_fn=None, # function to get the submodule from the model
-                 default_device='cpu', # default device to use for storing activations
+                 default_device='cpu',
+                 min_buffer=0.5, # minimum fraction of buffer to fill before refreshing
                  ):
         
         if io == 'in':
@@ -85,6 +86,7 @@ class ActivationBuffer:
             self.submodules = [submodule_fn(model) for model in models]
             
         self.default_device = default_device
+        self.min_buffer = min_buffer
 
         # assert num_gpus <= t.cuda.device_count()
         # assert num_gpus == len(models)
@@ -108,7 +110,7 @@ class ActivationBuffer:
         """
         with t.no_grad():
             # if buffer is less than half full, refresh
-            if (~self.read).sum() < self.n_ctxs * self.ctx_len // 2:
+            if (~self.read).sum() < self.n_ctxs * self.ctx_len * self.min_buffer:
                 try:
                     self.refresh()
                 except EmptyStream: # if the data stream is exhausted, stop
@@ -194,7 +196,7 @@ class ActivationBuffer:
             with concurrent.futures.ThreadPoolExecutor() as executor:
                 # futures = [executor.submit(self.process_on_gpu, model, tokens_chunk, self.io) 
                 #            for model, tokens_chunk in zip(self.models, split_tokens)]
-                futures = [executor.submit(self.process_on_gpu, self.models[i], self.submodules[i], split_tokens[i], self.io, 'cpu') for i in range(len(self.models))]
+                futures = [executor.submit(self.process_on_gpu, self.models[i], self.submodules[i], split_tokens[i], self.io, "cpu") for i in range(len(self.models))]
                 results = [f.result() for f in concurrent.futures.as_completed(futures)]
             
             # print("starting moving to device")

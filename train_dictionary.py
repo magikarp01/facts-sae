@@ -22,6 +22,7 @@ parser.add_argument('--layer', type=int, default=1, help='Specify the layer numb
 parser.add_argument('--size', type=str, default="70m", help='Specify the model size')
 parser.add_argument('--batch_size', type=int, default=1024, help='Specify the batch size')
 parser.add_argument('--steps', type=int, default=int(1e5), help='Specify the number of steps to train')
+parser.add_argument('--stream_dataset', type=bool, default=False, help='Specify whether to stream the dataset')
 # Parse the arguments
 args = parser.parse_args()
 
@@ -30,6 +31,7 @@ layer = args.layer
 size = args.size
 BATCH_SIZE = args.batch_size
 steps = args.steps
+stream_dataset = args.stream_dataset
 
 #%%
 print("starting to load model")
@@ -87,6 +89,7 @@ wandb.init(project='facts-sae',
                 'model': f'EleutherAI/pythia-{size}-deduped',
                 'batch_size': BATCH_SIZE,
                 'layer': layer,
+                'dataset': 'pile-uncopyrighted',
            }
            )
 
@@ -97,21 +100,25 @@ import torch
 from collections import defaultdict
 
 # Load the dataset
-# train_dataset = load_dataset('wikitext', 'wikitext-103-v1', split='train[:1000000]')
-train_dataset = load_dataset('Skylion007/openwebtext', split=f'train[:{int(7e6)}]')
+train_dataset = load_dataset('monology/pile-uncopyrighted', split='train', streaming=stream_dataset)
+
 def yield_sentences(data_split, cycle=False):
     while True:
         for example in data_split:
             text = example['text']
-            sentences = text.split('\n')
-            for sentence in sentences:
-                if sentence:  # skip empty lines
-                    yield sentence
+            # sentences = text.split('\n')
+            # for sentence in sentences:
+            #     if sentence:  # skip empty lines
+            #         yield sentence
+            yield text
         if not cycle:
             break
 
 # Creating an iterator for training sentences
 train_sentences = yield_sentences(train_dataset, cycle=True)
+
+for i in range(10):
+    print(next(train_sentences))
 
 buffer = ActivationBuffer(
     train_sentences,
