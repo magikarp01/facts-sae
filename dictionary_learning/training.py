@@ -87,8 +87,22 @@ def resample_neurons(deads, activations, ae, optimizer):
 
         # resample decoder vectors for dead neurons
         indices = t.multinomial(losses, num_samples=deads.sum(), replacement=True)
-        ae.decoder.weight[:,deads] = out_acts[indices].T
-        ae.decoder.weight /= ae.decoder.weight.norm(dim=0, keepdim=True)
+
+        # decoder is meta for some reason, so try this
+        # check if decoder is meta device
+        if ae.decoder.weight.device != losses.device:
+            print("decoder is meta before resampling")
+        print(f"{ae.decoder.weight.device=}, {losses.device=}, {indices.device=}, {deads=}")
+        dec_weight = ae.decoder.weight.clone()
+        dec_weight[:,deads] = out_acts[indices].T
+        dec_weight = dec_weight / dec_weight.norm(dim=0, keepdim=True)
+        print(f"{dec_weight.device=}, {dec_weight=}")
+        ae.decoder.weight.data = dec_weight
+        if ae.decoder.weight.device != losses.device:
+            print(f"decoder is meta after resampling, {ae.decoder.weight.device=}, {ae.decoder.weight=}")
+
+        # ae.decoder.weight[:,deads] = out_acts[indices].T
+        # ae.decoder.weight /= ae.decoder.weight.norm(dim=0, keepdim=True)
 
         # resample encoder vectors for dead neurons
         ae.encoder.weight[deads] = ae.encoder.weight[~deads].mean(dim=0) * 0.2

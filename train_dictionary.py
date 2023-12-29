@@ -187,7 +187,18 @@ def trainSAE(
         # print(f"{acts.shape=}")
         optimizer.zero_grad()
         loss = sae_loss(acts, ae, sparsity_penalty, entropy, separate=False)
-        loss.backward()
+        try:
+            loss.backward()
+        except RuntimeError as e:
+            print(f"broken at step {step}, loss is {loss}")
+            # is ae on meta?
+            print(ae.encoder.weight)
+            print(ae.decoder.weight)
+            print(ae.bias)
+            print(ae.encoder.weight.grad)
+            print(ae.decoder.weight.grad)
+            print(ae.bias.grad)
+
         optimizer.step()
         scheduler.step()
 
@@ -271,6 +282,7 @@ finished_sae, test_metrics = trainSAE(
     steps=steps,
     warmup_steps=5000,
     resample_steps=30000,
+    # resample_steps=1000,
     save_steps=int(1e4), 
     save_dir=f'trained_saes/{size}',
     log_steps=200,
