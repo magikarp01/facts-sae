@@ -23,6 +23,7 @@ parser.add_argument('--size', type=str, default="70m", help='Specify the model s
 parser.add_argument('--batch_size', type=int, default=1024, help='Specify the batch size')
 parser.add_argument('--steps', type=int, default=int(1e5), help='Specify the number of steps to train')
 parser.add_argument('--stream_dataset', type=bool, default=False, help='Specify whether to stream the dataset')
+parser.add_argument('--resample_steps', type=int, default=(3e4), help='How often to resample dead neurons')
 # Parse the arguments
 args = parser.parse_args()
 
@@ -32,6 +33,7 @@ size = args.size
 BATCH_SIZE = args.batch_size
 steps = args.steps
 stream_dataset = args.stream_dataset
+resample_steps = args.resample_steps
 
 #%%
 print("starting to load model")
@@ -155,7 +157,8 @@ def trainSAE(
         test_steps=10000, # how often to test
         device='cpu',
         tqdm_style=tqdm,
-        use_wandb=False
+        use_wandb=False,
+        save_steps_list=[100, 200, 500, 1000, 2000, 3000, 4000, 5000] # additional possible save steps
         ):
     """
     Train and return a sparse autoencoder
@@ -258,7 +261,7 @@ def trainSAE(
                     wandb.log(test_metrics, step=step)
 
         # saving
-        if save_steps is not None and save_dir is not None and step % save_steps == 0:
+        if save_steps is not None and save_dir is not None and (step % save_steps == 0 or step in save_steps_list):
             if not os.path.exists(save_dir):
                 os.mkdir(save_dir)
             if not os.path.exists(os.path.join(save_dir, "checkpoints")):
@@ -281,10 +284,10 @@ finished_sae, test_metrics = trainSAE(
     sparsity_penalty=1e-3,
     steps=steps,
     warmup_steps=5000,
-    resample_steps=30000,
+    resample_steps=resample_steps,
     # resample_steps=1000,
     save_steps=int(1e4), 
-    save_dir=f'trained_saes/{size}',
+    save_dir=f'trained_saes/{size}_l{layer}',
     log_steps=200,
     test_steps=200,
     device=device,

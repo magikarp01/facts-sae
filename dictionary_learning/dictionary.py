@@ -42,7 +42,7 @@ class AutoEncoder(Dictionary, nn.Module):
         self.decoder = nn.Linear(dict_size, activation_dim, bias=False)
         dec_weight = t.randn_like(self.decoder.weight)
         dec_weight = dec_weight / dec_weight.norm(dim=0, keepdim=True)
-        self.decoder.weight = nn.Parameter(dec_weight)
+        self.decoder.weight.data = dec_weight
 
     def encode(self, x):
         return nn.ReLU()(self.encoder(x - self.bias))

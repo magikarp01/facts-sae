@@ -42,6 +42,6 @@ def get_metrics(model: HookedTransformer, sae: AutoEncoder, hook_name: str, n_it
         performances['sports_test_loss'].append(sports_task.get_test_loss(model_inference_fn).item())
         performances['sports_test_accuracy'].append(sports_task.get_test_accuracy(model_inference_fn))
         # owt_task: get test loss
-        # performances['owt_test_loss'].append(owt_task.get_test_loss(model_inference_fn).item())
+        performances['owt_test_loss'].append(owt_task.get_test_loss(model_inference_fn).item())
     averages = {k: sum(v) / len(v) for k, v in performances.items()}
     return averages
